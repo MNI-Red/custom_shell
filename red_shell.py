@@ -3,8 +3,11 @@ import getpass
 import sys
 import signal
 import shlex
+import pipes
+import threading
 import subprocess as sbp
 # print(getpass.getuser())
+
 
 def get_input():
 	background = False
@@ -15,13 +18,33 @@ def get_input():
 		background = True
 	return shlex.split(command_line), background, command_line
 
+def clean_pipe(pid_to_process, pid_to_command, key):
+	processes = pid_to_process[key]
+	to_remove = []
+	for i in processes:
+		if i.poll() != None:
+			to_remove.append(i.pid)
+	new_key = tuple([i for i in key if i not in to_remove])
+	pid_to_process.pop(key)
+	command = pid_to_command.pop(key)
+	if len(new_key) > 1:
+		pid_to_process[new_key] = processes[:-len(new_key)]
+		pid_to_command[new_key] = command
+
+
 def clean_processes(pid_to_process, pid_to_command):
 	to_remove = []
+	pipe_ids = []
 	for pid in pid_to_process:
+		if type(pid) is tuple:
+			pipe_ids.append(pid)
+			continue
 		if pid_to_process[pid].poll() != None:
 			to_remove.append(pid)
 	[pid_to_process.pop(proc) for proc in to_remove]
 	[pid_to_command.pop(proc) for proc in to_remove]
+	for i in pipe_ids:
+		clean_pipe(pid_to_process, pid_to_command, i)
 
 def create_handler(obj, signal):
 	def _handler(signum, frame):
@@ -48,6 +71,38 @@ def sigint(signum, frame):
 # 	p = sbp.Popen(command_line)
 # 	return p, pid
 
+def pipe(commands_to_pipe):
+	first, last = commands_to_pipe[0], commands_to_pipe[-1]
+	process = sbp.Popen(first, stdout=sbp.PIPE)
+	pid_list = [process.pid]
+	process_list = [process]
+	out = process.stdout
+
+	for command in commands_to_pipe[1:-2]:
+		previous = process
+		process = sbp.Popen(command, stdin=out, stdout=sbp.PIPE)
+		out = process.stdout
+		previous.stdout.close()
+		pid_list.append(process.pid)
+		process_list.append(process)
+		
+
+	process = sbp.Popen(last, stdin=out)
+	pid_list.append(process.pid)
+	# print(pid_list)
+	full_pid = tuple(pid_list)
+	# pid_to_process[full_pid] = " | ".join(process_list)
+	# pid_to_command[full_pid] = original
+
+	return pid_list, full_pid, process_list
+	
+def pipe_wait(process_list):
+	results = [0]*len(process_list)
+	while process_list:
+		last = process_list.pop(-1)
+		results[len(process_list)] = last.wait()
+	return results
+
 def loop():
 	cwd = os.getcwd()
 	# past_commands = set()
@@ -55,19 +110,55 @@ def loop():
 	pid_to_command = {}
 	signal.signal(signal.SIGTSTP, create_handler(pid_to_process, signal.SIGTSTP))
 	signal.signal(signal.SIGINT, create_handler(pid_to_process, signal.SIGINT))
-	
-
+	# signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 	while True:
 		clean_processes(pid_to_process, pid_to_command)
-		print(pid_to_process)
+		# print(pid_to_process)
 		# try:
+		piping = False
+		cheat_shell = False
+		in_redirect = None
+		out_redirect = None
 		command_line, background, original = get_input()
-		# past_commands.add(command_line)
+		print(command_line)
+		
+		if "|" in command_line:
+			# cheat_shell = True
+			piping = True
+			new_split = [l.split(' ') for l in ' '.join(command_line).split("|")]
+			commands_to_pipe = [new_split[0][0]] + [l[1] for l in new_split[1:-1]] + [new_split[-1][-1]]
+			# print(new_split)
+			# print(commands_to_pipe)
+		if "<" in command_line:
+			# new_split = [command_line[:command_line.index("<")]]
+			index = command_line.index("<")
+			file_name = command_line[index+1:][0]
+			command_line = command_line[:index]
+			# file_name = new_split[1][1]
+			# print(command_line, file_name)
+			try:
+				in_redirect = open(file_name, 'r')
+			except FileNotFoundError:
+				print(file_name + ": no such file or directory")
+				continue
+		elif ">" in command_line:
+			index = command_line.index(">")
+			file_name = command_line[index+1:][0]
+			command_line = command_line[:index]
+			# print(command_line, file_name)
+			out_redirect = open(file_name, "w")
+
 		if len(command_line) < 1:
 			continue
+		
 		command = command_line[0]
+		
 		if command == "exit":
 			for i in pid_to_process:
+				if type(i) is tuple:
+					for process in pid_to_process[i]:
+						process.kill()
+					continue
 				pid_to_process[i].kill()
 			sys.exit()
 		elif command == "pwd":
@@ -122,19 +213,35 @@ def loop():
 		else:
 			# if not background:
 			try:
-				p = sbp.Popen(command_line)
-				pid_to_process[p.pid] = p
-				pid_to_command[p.pid] = original
-				# processes[p.pid] = [p, original]
-				if not background:
-					p.communicate()
-				# else:
-				# 	p = sbp.Popen(command_line, shell=True,
-	#          stdin=None, stdout=None, stderr=None, close_fds=True)
-				# 	p.wait()
-				print(p.pid)
-				# p.communicate()
-				# print(out)
+				if piping:
+					pid_list, full_pid, process_list = pipe(commands_to_pipe)
+					pid_to_process[full_pid] = process_list
+					pid_to_command[full_pid] = original
+
+					if not background:
+						# print("not background")
+						# result_available = threading.Event()
+						# thread = threading.Thread(target=pipe_wait, args=((process_list,)))
+						# thread.start()
+						# thread.join()
+						# pipe_wait(process_list)
+						# print("x,y,z")
+						print(process_list[-1].communicate()[0].decode("utf-8"))
+						# process_list[-1].stdout.flush()
+				else:
+					p = sbp.Popen(command_line, stdin=in_redirect, stdout=out_redirect, stderr=sbp.STDOUT)
+					pid_to_process[p.pid] = p
+					pid_to_command[p.pid] = original
+					# processes[p.pid] = [p, original]
+					if not background:
+						p.communicate()
+					# else:
+					# 	p = sbp.Popen(command_line, shell=True,
+					#stdin=None, stdout=None, stderr=None, close_fds=True)
+					# 	p.wait()
+					# print(p.pid)
+					# p.communicate()
+					# print(out)
 			except PermissionError:
 				print("Permission Error: not a binary command or builtin or one you do not have acces to.")
 				continue

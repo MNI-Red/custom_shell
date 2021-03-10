@@ -179,10 +179,11 @@ def subcommand_and_pipe(commands, first_in, last_out):
 		process_list.append(process)
 
 	out = process.stdout
+	# print(out.read())
 	# print(process.communicate()[0])
 	for proc in commands[1:-1]:
 		previous = process
-		print(proc)
+		# print(proc)
 		if any(["$" in i for i in proc]):
 			to_run = parse_subcommands(proc)
 			temp_pid_list, temp_full_pid, temp_process_list = subcommand_chain(to_run, out, sbp.PIPE)
@@ -196,20 +197,24 @@ def subcommand_and_pipe(commands, first_in, last_out):
 
 		out = process.stdout
 		previous.stdout.close()
-		print(out)
+		# print(out.read())
 
 	if any(["$" in i for i in last]):
 		to_run = parse_subcommands(last)
+		print(to_run)
 		temp_pid_list, temp_full_pid, temp_process_list = subcommand_chain(to_run, out, last_out)
 		pid_list.extend(temp_pid_list)
 		process_list.extend(temp_process_list)
 		process = process_list[-1]
 	else:
-		process = sbp.Popen(first, stdin = out, stdout=last_out)
+		process = sbp.Popen(last, stdin = out, stdout=last_out)
 		pid_list.append(process.pid)
 		process_list.append(process)
 
 	return pid_list, tuple(pid_list), process_list
+
+def echo_PID_to_user(pid, original):
+	print("PID: " + str(pid) + ") " + original)
 
 def loop():
 	cwd = os.getcwd()
@@ -227,7 +232,7 @@ def loop():
 		in_redirect, out_redirect, first_in, last_out = None, None, None, None
 		command_line, background, original = get_input()
 		# commands_to_run = command_line[:]
-		print("Initial parse: " + str(command_line))
+		# print("Initial parse: " + str(command_line))
 		
 		piping = "|" in command_line
 		subcommands = any(["$" in i for i in command_line])
@@ -319,11 +324,13 @@ def loop():
 			arguments = pid_to_process[pid].args
 			pid_to_process[pid].send_signal(signal.SIGCONT)
 			p = sbp.Popen(arguments[:-1])
+			echo_PID_to_user(p.pid, original)
 			pid_to_process[p.pid] = p
 			pid_to_command[p.pid] = original
+
 		elif command == "bg":
 			if len(command_line) < 2 or not command_line[1].isdecimal():
-				print("Please enter PID of process to foreground")
+				print("Please enter PID of process to background")
 				continue
 			pid = int(command_line[1])
 			if pid not in list(pid_to_process.keys()):
@@ -333,8 +340,14 @@ def loop():
 			arguments.append('&')
 			pid_to_process[pid].send_signal(signal.SIGCONT)
 			p = sbp.Popen(arguments[:])
+			echo_PID_to_user(p.pid, original)
 			pid_to_process[p.pid] = p
 			pid_to_command[p.pid] = original
+		elif command == "--help":
+			print("\nIn built: \nexit --> end shell process\npwd --> print working directory\ncd"+ 
+				"--> change directory\njobs --> print current processes with PIDs\nfg --> foreground a task by" + 
+				"passing in a PID\nbg --> background a task by passing in a PID\n--help --> this screen\n" + 
+				"Other methods are handled by the binary functions of this UNIX System.\n")
 		else:
 			try:
 				if subcommands and piping:
@@ -342,6 +355,7 @@ def loop():
 					pid_list, full_pid, process_list = subcommand_and_pipe(command_line, first_in, last_out)
 					pid_to_process[full_pid] = process_list
 					pid_to_command[full_pid] = original
+					echo_PID_to_user(full_pid, original)
 					if not background:
 						# print("not background")
 						print(process_list[-1].communicate()[0].decode("utf-8"))
@@ -349,7 +363,7 @@ def loop():
 					pid_list, full_pid, process_list = pipe(commands_to_pipe, first_in, last_out)
 					pid_to_process[full_pid] = process_list
 					pid_to_command[full_pid] = original
-
+					echo_PID_to_user(full_pid, original)
 					if not background:
 						# print("not background")
 						print(process_list[-1].communicate()[0].decode("utf-8"))
@@ -358,18 +372,20 @@ def loop():
 					pid_list, full_pid, process_list = subcommand_chain(command_line, first_in, last_out)
 					pid_to_process[full_pid] = process_list
 					pid_to_command[full_pid] = original
+					echo_PID_to_user(full_pid, original)
 					if not background:
 						# print("not background")
-						print(process_list[-1].communicate()[0].decode("utf-8"))
+						print(process_list[-1].communicate()[0].decod("utf-8"))
 						# process_list[-1].stdout.flush()
 				else:
 					p = sbp.Popen(command_line, stdin=first_in, stdout=last_out, stderr=sbp.STDOUT)
 					pid_to_process[p.pid] = p
 					pid_to_command[p.pid] = original
+					echo_PID_to_user(p.pid, original)
 					# processes[p.pid] = [p, original]
 					if not background:
 						p.communicate()
 			except PermissionError:
-				print("Permission Error: not a binary command or builtin or one you do not have acces to.")
+				print("Permission Error: not a binary command or builtin or one you do not have acces to. Run --help for more info")
 				continue
 loop()

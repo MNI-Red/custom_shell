@@ -1,0 +1,71 @@
+ls
+ps
+cat history.txt
+exit
+ls
+python3 numbers.py
+exit
+python3 numbers.py
+exit
+python3 numbers.py
+python3 numbers.py &
+fg 1984
+jobs
+fg91
+jobs
+fg 1991
+ls
+python3 numbers.py &
+jobs
+fg 2004
+exit
+python3 numbers.p
+exit
+python3 numbers.py
+exit
+ls
+python3 numbers.py
+ls
+python3 numbers.py
+exit
+python3 numbers.py
+exit
+python3 numbers.py
+exit
+python3 numbers.py
+exit
+ find /home/dros -name "*.txt" | sort -n | uniq | cat
+echo $(echo $(echo $(echo $(seq 1 10)))) | sort -n | uniq | cat
+python3 numbers.py
+exit
+python3 numbers.py
+ls
+exit
+python3 numbers.py
+ls
+python3 numbers.py
+exit
+python3 numbers.py
+exit
+python3 numbers.py
+python3 numbers.py &
+jobs
+fg 320
+jobs
+ps
+jobs
+exit
+python3 numbers.py
+exit
+python3 numbers.py
+ls
+exit
+python3 numbers.py
+jobs
+exit
+python3 numbers.py
+jobs
+exit
+python3 numbers.py
+jobs
+exit

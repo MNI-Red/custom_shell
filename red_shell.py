@@ -32,6 +32,11 @@ def clean_pipe(pid_to_process, pid_to_command, key):
 		pid_to_process[new_key] = processes[:-len(new_key)]
 		pid_to_command[new_key] = command
 
+def clean_processes_wrapper(foreground_pid_to_process, background_pid_to_process, paused_commands, pid_to_command):
+	clean_processes(foreground_pid_to_process, pid_to_command)
+	clean_processes(background_pid_to_process, pid_to_command)
+	clean_processes(paused_commands, pid_to_command)
+
 def clean_processes(pid_to_process, pid_to_command):
 	to_remove = []
 	pipe_ids = []
@@ -40,14 +45,27 @@ def clean_processes(pid_to_process, pid_to_command):
 			pipe_ids.append(pid)
 			continue
 		if pid_to_process[pid].poll() != None:
-			print("PID: " + str(pid) + ") " + pid_to_command[pid]+ " Return Code: " 
-				+ str(pid_to_process[pid].returncode))
+			# print("PID: " + str(pid) + ") " + pid_to_command[pid]+ " Return Code: " 
+			# 	+ str(pid_to_process[pid].returncode))
 			to_remove.append(pid)
 
 	[pid_to_process.pop(proc) for proc in to_remove]
 	[pid_to_command.pop(proc) for proc in to_remove]
 	for i in pipe_ids:
 		clean_pipe(pid_to_process, pid_to_command, i)
+
+def kill_processes_wrapper(foreground_pid_to_process, background_pid_to_process, paused_commands):
+	kill_processes(foreground_pid_to_process)
+	kill_processes(background_pid_to_process)
+	kill_processes(paused_commands)
+
+def kill_processes(pid_to_process):
+	for i in pid_to_process:
+		if type(i) is tuple:
+			for process in pid_to_process[i]:
+				process.kill()
+			continue
+		pid_to_process[i].kill()
 
 def signal_handler(pid_to_process, sig):
 	def _handler(signal, frame):
@@ -70,15 +88,16 @@ def handler(signal, frame):
 
 def stp_handler(pid_history, paused_commands, pid_to_process, pid_to_command):
 	def _handler(signal, frame):
-		print("signal recieved: ", signal)
-		# print(pid_to_process)
+		# print("signal recieved: ", signal)
+		print(pid_to_process)
 		try:
 			to_remove = pid_history[-1]
 		except IndexError:
 			raise NoPastCommandsError
 		
-		if pid_history[-1] not in list(paused_commands.keys()):
+		if pid_history[-1] not in paused_commands and pid_history[-1] in pid_to_process:
 			to_remove = pid_history[-1]
+			pid_to_process[to_remove].send_signal(signal)
 			paused_commands[to_remove] = pid_to_process[to_remove]
 			pid_to_process.pop(to_remove)
 		else:
@@ -244,7 +263,9 @@ class NoPastCommandsError(Exception):
 def loop():
 	cwd = os.getcwd()
 	# past_commands = set()
-	pid_to_process= {}
+	
+	foreground_pid_to_process= {}
+	background_pid_to_process = {}
 	pid_to_command = {}
 	paused_commands = {}
 	pid_history = []
@@ -257,7 +278,7 @@ def loop():
 	# 	signal.signal(signal.SIGTSTP, signal.SIGTSTP)
 	# signal.signal(signal.SIGTSTP, )
 	signal.signal(signal.SIGINT, handler)
-	signal.signal(signal.SIGTSTP, stp_handler(pid_history, paused_commands, pid_to_process, pid_to_command))
+	signal.signal(signal.SIGTSTP, stp_handler(pid_history, paused_commands, foreground_pid_to_process, pid_to_command))
 
 	# signal.signal(signal.SIGTSTP, signal_handler(pid_to_process, signal.SIGSTOP))
 	# signal.signal(signal.SIGINT, c_handler(pid_to_process, signal.SIGINT))
@@ -266,19 +287,23 @@ def loop():
 	# signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 	while True:
 		try:
-			clean_processes(pid_to_process, pid_to_command)
+			clean_processes_wrapper(foreground_pid_to_process, background_pid_to_process, paused_commands, pid_to_command)
 			# creation_flags = 0
 			# print(paused_commands, pid_to_process)
 			pre_fn = None
+			pid_to_process = foreground_pid_to_process
 			# foreground = -1
-			# print(pid_to_process)
+			print(foreground_pid_to_process, background_pid_to_process)
 			# try:
 			piping, subcommands = False, False
 			in_redirect, out_redirect, first_in, last_out = None, None, None, None
 			command_line, background, original = get_input()
 			if background:
 				# pre_fn = background_signal_handler
+				# pre_fn = lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
+
 				pre_fn = lambda: signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGINT, signal.SIGTSTP))
+				pid_to_process = background_pid_to_process
 				# pass
 			# commands_to_run = command_line[:]
 			# print("Initial parse: " + str(command_line))
@@ -334,12 +359,7 @@ def loop():
 			command = command_line[0]
 			if command == "exit":
 				readline.write_history_file(history_file)
-				for i in pid_to_process:
-					if type(i) is tuple:
-						for process in pid_to_process[i]:
-							process.kill()
-						continue
-					pid_to_process[i].kill()
+				kill_processes_wrapper(foreground_pid_to_process, background_pid_to_process, paused_commands)
 				sys.exit()
 			elif command == "pwd":
 				print(cwd)
@@ -359,58 +379,102 @@ def loop():
 					print("Paused Processess:")
 					for pid in paused_commands:
 						print("PID: " + str(pid) + ") " + pid_to_command[pid])
-					print("\nOngoing Processess: ")
-					ongoing = [pid for pid in pid_to_command if pid not in paused_commands]
-					if len(ongoing) < 1:
+					
+					print("\nOngoing Foreground Processess: ")
+					foreground_ongoing = [pid for pid in foreground_pid_to_process if pid not in paused_commands]
+					if len(foreground_ongoing) < 1:
 						print("None")
 					else:
-						for ongoing in pid_to_command:
+						for pid in foreground_ongoing:
 							# print(proc.args)
-							if pid not in paused_commands:
-								print("PID: " + str(pid) + ") " + pid_to_command[pid])
+							print("PID: " + str(pid) + ") " + pid_to_command[pid])
+					
+					print("\nOngoing Background Processess: ")
+					background_ongoing = [pid for pid in background_pid_to_process if pid not in paused_commands]
+					if len(background_ongoing) < 1:
+						print("None")
+					else:
+						for pid in background_ongoing:
+							# print(proc.args)
+							print("PID: " + str(pid) + ") " + pid_to_command[pid])
+
 					print()
+				else:
+					print("No jobs")
 				# if len(paused_commands > 0)
 			elif command == "fg":
 				if len(command_line) < 2 or not command_line[1].isdecimal():
 					print("Please enter PID of process to foreground")
 					continue
 				pid = int(command_line[1])
+				# pid_to_process = background_pid_to_process
 				# print(pid)
 				# print(list(pid_to_process.keys()))
 				# print(pid in list(pid_to_process.keys()))
-				if pid not in list(pid_to_process.keys()):
+				if pid not in paused_commands and pid not in background_pid_to_process:
 					print("Please enter the PID of an existing process. Find the PIDs by using the \'jobs\' command.")
 					continue
-				
-				arguments = pid_to_process[pid].args
-				previous = pid_to_command[pid][:-1]
-				# pid_to_process[pid].send_signal(signal.SIGSTOP)
-				pid_to_process[pid].kill()
-				p = sbp.Popen(arguments[:-1])
-				echo_PID_to_user(p.pid, previous)
-				pid_to_process[p.pid] = p
-				pid_to_command[p.pid] = previous
+				if pid in list(paused_commands.keys()):
+					paused_commands[pid].send_signal(signal.SIGCONT)
+					foreground_pid_to_process[pid] = paused_commands[pid]
+					paused_commands.pop(pid)
+					
+					print(foreground_pid_to_process, background_pid_to_process)
+					signal.signal(signal.SIGTSTP, stp_handler(pid_history, paused_commands, foreground_pid_to_process, 
+						pid_to_command))
+
+					foreground_pid_to_process[pid].communicate()
+				else:
+					background_pid_to_process[pid].send_signal(signal.SIGTSTP)
+					foreground_pid_to_process[pid] = background_pid_to_process[pid]
+					background_pid_to_process.pop(pid)
+					foreground_pid_to_process[pid].send_signal(signal.SIGCONT)
+
+					print(foreground_pid_to_process, background_pid_to_process)
+					signal.signal(signal.SIGTSTP, stp_handler(pid_history, paused_commands, foreground_pid_to_process, 
+						pid_to_command))
+
+					foreground_pid_to_process[pid].communicate()
+				# arguments = pid_to_process[pid].args
+				# previous = pid_to_command[pid][:-1]
+				# # pid_to_process[pid].send_signal(signal.SIGSTOP)
+				# pid_to_process[pid].kill()
+				# p = sbp.Popen(arguments[:-1])
+				# echo_PID_to_user(p.pid, previous)
+				# pid_to_process[p.pid] = p
+				# pid_to_command[p.pid] = previous
 			elif command == "bg":
 				if len(command_line) < 2 or not command_line[1].isdecimal():
 					print("Please enter PID of process to background")
 					continue
 				pid = int(command_line[1])
-				if pid not in list(pid_to_process.keys()):
+				if pid in background_pid_to_process:
+					print("You naughty naughty. You can't background a process already in the background.")
+					continue
+				if pid not in paused_commands and pid not in foreground_pid_to_process:
 					print("Please enter the PID of an existing process. Find the PIDs by using the \'jobs\' command.")
 					continue
-				arguments = pid_to_process[pid].args
-				previous = pid_to_command[pid] + " &"
-				arguments.append('&')
-				# pid_to_process[pid].send_signal(signal.SIGSTOP)
-				pid_to_process[pid].kill()
+				# signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGINT, signal.SIGTSTP))
+				if pid in list(paused_commands.keys()):
+					paused_commands[pid].send_signal(signal.SIGCONT)
+					foreground_pid_to_process[pid] = paused_commands[pid]
+					paused_commands.pop(pid)
+				else:
+					foreground_pid_to_process[pid].send_signal(signal.SIGTSTP)
+					foreground_pid_to_process[pid].send_signal(signal.SIGCONT)
+				# arguments = pid_to_process[pid].args
+				# previous = pid_to_command[pid] + " &"
+				# arguments.append('&')
+				# # pid_to_process[pid].send_signal(signal.SIGSTOP)
+				# pid_to_process[pid].kill()
 
-				pre_fn = lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
-				# pre_fn = lambda: signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGINT, signal.SIGTSTP))
+				# pre_fn = lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
+				# # pre_fn = lambda: signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGINT, signal.SIGTSTP))
 
-				p = sbp.Popen(arguments[:], preexec_fn = pre_fn)
-				echo_PID_to_user(p.pid, previous)
-				pid_to_process[p.pid] = p
-				pid_to_command[p.pid] = previous
+				# p = sbp.Popen(arguments[:], preexec_fn = pre_fn)
+				# echo_PID_to_user(p.pid, previous)
+				# pid_to_process[p.pid] = p
+				# pid_to_command[p.pid] = previous
 			elif command == "--help":
 				print("\nIn built: \nexit --> end shell process\npwd --> print working directory\ncd"+ 
 					"--> change directory\njobs --> print current processes with PIDs\nfg --> foreground a task by" + 

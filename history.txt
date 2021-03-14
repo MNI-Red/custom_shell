@@ -69,3 +69,107 @@ exit
 python3 numbers.py
 jobs
 exit
+python3 numbers.py
+jobs
+fg 9
+fg 1145
+exit
+python3 numbers.py
+jobs
+fg 1229
+jobs
+bg 1229
+jobs
+fg 1229
+exit
+python3 numbers.py
+jobs
+fg 1338
+jobs
+bg 1338
+jobs
+exit
+python3 numbers.py
+jobs
+bg 1376
+jobs
+exit
+python3 numbers.py &
+jobs
+fg 1395
+jobs
+fg 1385
+fg 1395
+jobs
+fg 1395
+jobs
+exit
+python3 numbers.py
+jobs
+bg 1534
+jobs
+fg 1534
+exit
+python3 numbers.py
+jobs
+ls
+rm out.txt
+ls
+python3 numbers.py
+jobs
+bg 1584
+jobs
+exit
+python3 numbers.py
+jobs
+bg 1705
+jobs
+ls
+rm out.txt
+ls
+exit
+python3 numbers.py &
+jobs
+fg 1802
+exit
+python3 numbers.py &
+jobs
+bg 1875
+jobs
+fg 1875
+jobs
+exit
+python3 numbers.py &
+jobs
+exit
+python3 numbers.py &
+jobs
+exit
+python3 numbers.py &
+jobs
+fg 1951
+exit
+python3 numbers.py &
+jobs
+bg 1994
+fg 1994
+exit
+python3 numbers.py &
+fg 2013
+exit
+python3 numbers.py &
+fg 2040
+jobs
+exit
+python3 numbers.py &
+fg 2059
+exit
+python3 numbers.py &
+fg 2078
+exit
+python3 numbers.py &
+fg 2176
+jobs
+exit
+python3 numbers.py &
+exit

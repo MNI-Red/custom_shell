@@ -173,3 +173,45 @@ jobs
 exit
 python3 numbers.py &
 exit
+python3 numbers.py &
+fg 2571
+jobs
+ps
+exit
+python3 numbers.py &
+fg 2575
+python3 numbers.py &
+fg 2598
+exit
+python3 numbers.py &
+ps -ef
+jobs
+fg 2714
+ps
+exit
+python3 numbers.py &
+fg 2736
+jobs
+bg 2736
+jobs
+bg 2736
+exit
+ps
+exit
+ps -ef
+exit
+python3 numbers.py &
+fg 2830
+jobs
+bg 2830
+fg 2830
+jobs
+exit
+pwd > sheesh
+ls
+cat sheesh
+vim sheesh
+exit
+pwd > test\ out.txt
+cat test\ out.txt
+exit

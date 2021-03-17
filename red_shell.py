@@ -1,13 +1,12 @@
 import os
-import getpass
 import sys
 import signal
 import shlex
-import pipes
 import logging
 import readline
 import traceback
 import subprocess as sbp
+# import getpass
 # print(getpass.getuser())
 
 def get_input():
@@ -66,25 +65,6 @@ def kill_processes(pid_to_process):
 				process.kill()
 			continue
 		pid_to_process[i].kill()
-
-def signal_handler(pid_to_process, sig):
-	def _handler(signal, frame):
-		print("signal recieved: ", signal)
-		print("signal sent: ", sig)
-		print(pid_to_process)
-		try:
-			pid_to_process[list(pid_to_process.keys())[0]].send_signal(sig)
-			# os.kill(, sig)
-			print("in try, in handler, Return Code: ", pid_to_process[list(pid_to_process.keys())[-1]].returncode)
-			traceback.print_stack()
-		except KeyError:
-			print("K")
-			pass
-	return _handler
-
-def handler(signal, frame):
-	print("signal recieved: ", signal)
-	pass
 
 def stp_handler(pid_history, paused_commands, pid_to_process, pid_to_command):
 	def _handler(signal, frame):
@@ -291,9 +271,9 @@ def loop():
 	pid_history = []
 	# process_order = set()
 	# foreground = -1
-	def background_signal_handler():
-		signal.signal(signal.SIGINT, signal.SIG_IGN)
-		signal.signal(signal.SIGTSTP, signal.SIG_IGN)
+	# def background_signal_handler():
+	# 	signal.signal(signal.SIGINT, signal.SIG_IGN)
+	# 	signal.signal(signal.SIGTSTP, signal.SIG_IGN)
 	# def foreground_signal_handler():
 	# 	signal.signal(signal.SIGTSTP, signal.SIGTSTP)
 	# signal.signal(signal.SIGTSTP, )
